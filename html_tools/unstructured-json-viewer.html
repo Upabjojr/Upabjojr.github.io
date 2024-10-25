@@ -498,7 +498,7 @@ function applyPdfData(pdfData, pageNumber) {
   var { pdfjsLib } = globalThis;
 
   // The workerSrc property shall be specified.
-  pdfjsLib.GlobalWorkerOptions.workerSrc = '/static/pdf.worker.mjs';
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.7.76/pdf.worker.min.mjs';
 
   // Using DocumentInitParameters object to load binary data.
   var loadingTask = pdfjsLib.getDocument({data: pdfData});
