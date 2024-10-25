@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html>
+<head>
+
+  <title>Unstructured JSON Viewer</title>
+<style>
+
+table, th, td {
+    border: 1px solid;
+}
+
+table {
+    border-collapse: collapse;
+}
+
+.image_caption {
+    background-color: lightgray;
+}
+
+.image_displayed {
+    max-width: 90%;
+    max-height: 90vh;
+    margin-left: 5%;
+}
+
+.non-selectable {
+  user-select: none;
+  -moz-user-select: none;
+  -webkit-user-select: none;
+  -ms-user-select: none;
+}
+
+.paragraph-elem-type {
+    font-size: xx-small;
+    font-style: italic;
+    color: gray;
+}
+
+.page-number-a {
+    background-color: lightcyan;
+}
+
+#pdf-container {
+    float: right;
+    width: 49vw;
+    height: 95vh;
+    position: fixed;
+    margin-left: 51%;
+    top: 0px;
+}
+
+.half-left {
+    width: 50%;
+}
+
+.figure_caption {
+    background-color: lightyellow;
+}
+
+.header {
+    background-color: lightskyblue;
+    font-size: small;
+    font-style: italic;
+}
+
+.footer {
+    background-color: lightsalmon;
+    font-size: small;
+    font-style: italic;
+}
+
+#label-current-page {
+  margin-right: 1%;
+  margin-left: 1%;
+}
+
+</style>
+<script>
+
+function addParsedImage(metadata, div) {
+    if (!('image_base64' in metadata)) {
+        return;
+    }
+
+    let p_buttons = document.createElement("p");
+    let button_open_chatbdl = document.createElement("button");
+    button_open_chatbdl.innerText = "Vai su ChatBDL";
+    let button_hide = document.createElement("button");
+    button_hide.innerText = "Hide";
+    let button_show = document.createElement("button");
+    button_show.innerText = "Show";
+    button_show.setAttribute("style", "display: none;");
+    let img = document.createElement("img");
+    let img_data = `data:${metadata.image_mime_type};base64,` + metadata.image_base64;
+    img.setAttribute("src", img_data);
+    img.setAttribute("class", "image_displayed");
+    button_hide.addEventListener("click", (event) => {
+        button_hide.setAttribute("style", "display: none;");
+        img.setAttribute("style", "display: none;");
+        button_show.setAttribute("style", "");
+    }, false);
+    button_show.addEventListener("click", (event) => {
+        button_hide.setAttribute("style", "");
+        img.setAttribute("style", "");
+        button_show.setAttribute("style", "display: none;");
+    }, false);
+    button_open_chatbdl.addEventListener("click", (event) => {
+        localStorage.setItem('chatbdl_current_img', img_data);
+        window.open('/static/chat-bdl.html', '_blank');
+    }, false);
+    p_buttons.appendChild(button_hide);
+    p_buttons.appendChild(button_show);
+    p_buttons.appendChild(button_open_chatbdl);
+    div.appendChild(p_buttons);
+    div.appendChild(img);
+    div.setAttribute("class", "image_caption");
+}
+
+
+function renderDoc(elems) {
+    var current_page = -1;
+    let divResp = document.getElementById("divResp");
+    divResp.innerHTML = "";
+
+    let root = document.querySelector("#rootDiv");
+    for (let elem of elems) {
+        let metadata = elem.metadata;
+        if (metadata != null && metadata.page_number != null) {
+            let page_number = metadata.page_number;
+
+            if (current_page != page_number) {
+                current_page = page_number;
+                let page_anchor = document.createElement("div");
+                let anch = document.createElement("button");
+                // anch.setAttribute("href", "#");
+                anch.setAttribute("class", "non-selectable page-number-a");
+                anch.innerText = `Page number: ${page_number}`;
+                anch.addEventListener("click", (event) => changePdfPage(page_number), false);
+                page_anchor.appendChild(anch);
+                root.appendChild(page_anchor);
+            }
+        }
+
+        let div = document.createElement("div");
+        div.setAttribute("id", `eid_${elem.element_id}`);
+        let ptype = document.createElement("p");
+        let button_identify = document.createElement("button");
+        button_identify.innerText = "Identify";
+        button_identify.setAttribute("class", "button_identify");
+        button_identify.style["font-size"] = "xx-small";
+        button_identify.style["margin-left"] = "10px";
+        button_identify.addEventListener("click", e => {
+          drawUnstructuredRectOnCanvas(elem);
+        }, false);
+        let buttonS = document.createElement("button");
+        buttonS.innerText = "Select Answer";
+        buttonS.setAttribute("class", "select-answer-button");
+        buttonS.style["font-size"] = "xx-small";
+        buttonS.style.display = "none";
+        buttonS.addEventListener("click", e => {
+          selectBlockAsAnswer(e);
+        }, false);
+        let text_dc_prob = (metadata != null && metadata.detection_class_prob != null)? ` (${Math.round(100 * metadata.detection_class_prob)}% class probability)` : "";
+        ptype.innerText = elem.type + text_dc_prob;
+        ptype.appendChild(button_identify);
+        ptype.appendChild(buttonS);
+        ptype.setAttribute("class", "non-selectable paragraph-elem-type");
+        div.appendChild(ptype);
+
+        let pquestion = document.createElement("p");
+        pquestion.setAttribute("class", "p-question-rag-answer");
+        pquestion.style.display = "none";
+        div.appendChild(pquestion);
+
+        addParsedImage(metadata, div);
+
+        if (elem.type == "Title") {
+            let h = document.createElement("h2");
+            h.innerText = elem.text;
+            div.appendChild(h);
+        } else if (elem.type == "Image") {
+            let p = document.createElement("p");
+            p.innerText = elem.text;
+            div.appendChild(p);
+        } else if (elem.type == "Table") {
+            if (metadata != null && metadata != undefined && metadata.text_as_html != null) {
+                let divTable = document.createElement("div");
+                divTable.innerHTML = metadata.text_as_html;
+                div.appendChild(divTable);
+            } else {
+                let p = document.createElement("p");
+                p.innerText = elem.text;
+                div.appendChild(p);
+            }
+        } else if (elem.type == "ListItem") {
+            let li = document.createElement("li");
+            let ul = document.createElement("ul");
+            ul.appendChild(li);
+            li.innerText = elem.text;
+            div.appendChild(ul);
+        } else if (elem.type == "PageBreak") {
+            let p = document.createElement("p");
+            p.innerText = elem.text;
+            div.appendChild(p);
+            div.appendChild(document.createElement("br"));
+        } else if (elem.type == "FigureCaption") {
+            let p = document.createElement("p");
+            p.innerText = elem.text;
+            p.setAttribute("class", "figure_caption");
+            div.appendChild(p);
+        } else if (elem.type == "Header") {
+            let p = document.createElement("p");
+            p.innerText = elem.text;
+            p.setAttribute("class", "header");
+            div.appendChild(p);
+        } else if (elem.type == "Footer") {
+            let p = document.createElement("p");
+            p.innerText = elem.text;
+            p.setAttribute("class", "footer");
+            div.appendChild(p);
+        } else {
+            let p = document.createElement("p");
+            p.innerText = elem.text;
+            div.appendChild(p);
+        }
+        root.appendChild(div);
+        root.appendChild(document.createElement("hr"));
+    }
+
+    changeSelectRagAnswerColor();
+}
+
+async function uploadDocument(input_elem) {
+    let divResp = document.getElementById("divResp");
+    divResp.innerHTML = "<p class='loading'>Waiting for response...</p>";
+    const file = input_elem.files[0];
+
+    let labelFileUnstructured = document.querySelector("#label-file-unstructured");
+    labelFileUnstructured.innerText = file.name;
+
+    if (file.type !== 'application/json') {
+        console.error('Only JSON files are supported.');
+        return;
+    }
+
+    let rootDiv = document.querySelector("#rootDiv");
+    rootDiv.innerHTML = "";
+    console.log(file);
+
+    const fileReader = new FileReader();
+
+    fileReader.addEventListener('load', (event) => {
+        const fileContents = event.target.result;
+
+        try {
+            const jsonData = JSON.parse(fileContents);
+            console.log('Parsed JSON data:', jsonData);
+            renderDoc(jsonData);
+        } catch (error) {
+            console.error('Error parsing JSON file:', error);
+        }
+    });
+
+    fileReader.addEventListener('error', (event) => {
+        console.error('Error reading file:', event.target.error);
+    });
+
+    fileReader.readAsText(file);
+}
+
+var rag_result = [];
+
+async function uploadRagResult(input_elem) {
+    const file = input_elem.files[0];
+
+    if (file.type !== 'application/json') {
+        console.error('Only JSON files are supported.');
+        return;
+    }
+
+    const fileReader = new FileReader();
+
+    fileReader.addEventListener('load', (event) => {
+        const fileContents = event.target.result;
+
+        try {
+            const jsonData = JSON.parse(fileContents);
+            console.log('Parsed JSON data:', jsonData);
+            rag_result = jsonData;
+            addRagTagging(rag_result);
+        } catch (error) {
+            console.error('Error parsing JSON file:', error);
+        }
+    });
+
+    fileReader.addEventListener('error', (event) => {
+        console.error('Error reading file:', event.target.error);
+    });
+
+    fileReader.readAsText(file);
+}
+
+function addRagTagging(rag_result) {
+  let idDivRagTagging = document.querySelector("#idDivRagTagging");
+  idDivRagTagging.style.display = null;
+  let selectRag = document.querySelector("#idSelectRagTagging");
+  selectRag.innerText = "";
+  var i = 0;
+  for (let ragQuestion of rag_result) {
+    let option = document.createElement("option");
+    option.value = `${i}`;
+    option.innerText = ragQuestion.domanda;
+    i++;
+    selectRag.appendChild(option);
+  }
+  changeRagTagger();
+  let divMain = document.querySelector("#divMain");
+  divMain.style["margin-left"] = "5%";
+  divMain.style["margin-top"] = "20px";
+
+  changeSelectRagAnswerColor();
+}
+
+function changeSelectRagAnswerColor() {
+  let label = document.querySelector("#label-file-unstructured");
+  let file = label.innerText;
+
+  if (localStorage.getItem("rag_predictions") == null) {
+    localStorage.setItem("rag_predictions", JSON.stringify({}));
+  }
+  let preds = JSON.parse(localStorage.getItem("rag_predictions"));
+  if (preds[file] == null)
+    preds[file] = {};
+  let skeys = Object.keys(preds[file]);
+
+  let selectRag = document.querySelector("#idSelectRagTagging");
+  for (let option of selectRag.querySelectorAll("option")) {
+    if (skeys.includes(option.innerText.trim())) {
+      option.style["background-color"] = "lightgreen";
+    }
+  }
+
+  let domandaSel = rag_result[selectRag.value].domanda.trim();
+
+  let d = preds[file];
+
+  Object.entries(d).forEach(([domanda, valuelist]) => {
+    for (let value of valuelist) {
+      let element_id = value.element_id;
+      let divp = document.querySelector(`#eid_${element_id}`);
+      let pquestion = divp.querySelector(".p-question-rag-answer");
+      addDomandaToList(pquestion, domanda, element_id);
+
+      if (domanda == domandaSel) {
+        let a = document.querySelector(`#anchor_${element_id}`);
+        if (a != null) {
+            a.style["background-color"] = "lightgreen";
+        }
+      }
+    }
+  });
+
+  for (let buttonS of document.querySelectorAll(".select-answer-button")) {
+    buttonS.style.display = null;
+  }
+}
+
+function addRagSelectAnswerButtons() {
+  let idButtons = document.querySelectorAll(".button_identify");
+  for (let idButton of idButtons) {
+    let p = idButton.parentElement;
+
+    p.appendChild(button);
+  }
+}
+
+function changeRagTagger() {
+  let divRagResList = document.querySelector("#divRagResList");
+  let selectRag = document.querySelector("#idSelectRagTagging");
+  divRagResList.innerText = "";
+  let current = rag_result[selectRag.value];
+  console.log(current);
+  for (let res of current.results) {
+    let a = document.createElement("a");
+    a.innerText = `${Math.floor(1000*res.score)/10}%`
+    a.href = `#eid_${res.id}`;
+    a.setAttribute("id", `anchor_${res.id}`);
+    let p = document.createElement("p");
+    p.appendChild(a);
+    divRagResList.appendChild(p);
+  }
+
+  changeSelectRagAnswerColor();
+}
+
+function addDomandaToList(pquestion, domanda, element_id) {
+  var flag = true;
+  let subp = pquestion.querySelectorAll("p");
+  if (subp != null) {
+    for (let pqa1 of subp) {
+      if (pqa1.innerText.replace(/X$/, "") == domanda) {
+        flag = false;
+        break;
+      }
+    }
+  }
+  if (flag) {
+    let pqa = document.createElement("p");
+    pqa.innerText = domanda;
+    let buttonX = document.createElement("button");
+    buttonX.innerText = "X";
+    buttonX.style["margin-left"] = "15pt";
+    buttonX.setAttribute("class", ".non-selectable");
+    buttonX.addEventListener("click", e => {
+      removeDomandaAnswerForRag(domanda, element_id);
+      pquestion.removeChild(pqa);
+      let a = document.querySelector(`#anchor_${element_id}`);
+      if (a != null) {
+        a.style["background-color"] = null;
+      }
+    }, false);
+    pqa.appendChild(buttonX);
+    pquestion.appendChild(pqa);
+    pquestion.style.display = null;
+  }
+}
+
+function removeDomandaAnswerForRag(domanda, element_id) {
+  let label = document.querySelector("#label-file-unstructured");
+  let file = label.innerText;
+
+  if (localStorage.getItem("rag_predictions") == null) {
+    localStorage.setItem("rag_predictions", JSON.stringify({}));
+  }
+  let preds = JSON.parse(localStorage.getItem("rag_predictions"));
+  if (preds[file] == null)
+    preds[file] = {};
+  let skeys = Object.keys(preds[file]);
+
+  let drisp = preds[file][domanda];
+
+  let drisp2 = drisp.filter(x => x.element_id != element_id);
+  preds[file][domanda] = drisp2;
+  if (drisp2.length == 0) {
+    delete preds[file][domanda];
+  }
+  localStorage.setItem("rag_predictions", JSON.stringify(preds));
+
+  changeSelectRagAnswerColor();
+}
+
+function selectBlockAsAnswer(e) {
+  let label = document.querySelector("#label-file-unstructured");
+  let file = label.innerText;
+  let selectRag = document.querySelector("#idSelectRagTagging");
+  let current = rag_result[selectRag.value];
+  let domanda = current.domanda.trim();
+  let element_id = e.target.parentElement.parentElement.id.replace(/^eid_/, "");
+  let pquestion = e.target.parentElement.parentElement.querySelector(".p-question-rag-answer");
+  addDomandaToList(pquestion, domanda, element_id);
+  if (localStorage.getItem("rag_predictions") == null) {
+    localStorage.setItem("rag_predictions", JSON.stringify({}));
+  }
+  let preds = JSON.parse(localStorage.getItem("rag_predictions"));
+  if (!(file in preds)) {
+    preds[file] = {};
+  }
+  if (!(domanda in preds[file])) {
+    preds[file][domanda] = [];
+  }
+  if (preds[file][domanda].filter(x => x.element_id == element_id).length == 0) {
+    preds[file][domanda].push({
+      element_id: element_id,
+    });
+  }
+  localStorage.setItem("rag_predictions", JSON.stringify(preds));
+
+  changeSelectRagAnswerColor();
+}
+
+function download_rag_tags_as_json() {
+    let blob = new Blob([localStorage.getItem("rag_predictions")], {type: "application/json"});
+    let a = document.createElement("a");
+    a.href = window.URL.createObjectURL(blob);
+
+    let name = "rag-predictions.json";
+    a.download = name;
+    a.name = name;
+    a.click();
+    a.remove();
+}
+
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.7.76/pdf.min.mjs" type="module"></script>
+<script>
+function applyPdfData(pdfData, pageNumber) {
+  // Loaded via <script> tag, create shortcut to access PDF.js exports.
+  var { pdfjsLib } = globalThis;
+
+  // The workerSrc property shall be specified.
+  pdfjsLib.GlobalWorkerOptions.workerSrc = '/static/pdf.worker.mjs';
+
+  // Using DocumentInitParameters object to load binary data.
+  var loadingTask = pdfjsLib.getDocument({data: pdfData});
+  loadingTask.promise.then(function(pdf) {
+    pdfDoc = pdf;
+    console.log('PDF loaded');
+    renderPdfDoc(pageNumber);
+  }, function (reason) {
+    // PDF loading error
+    console.error(reason);
+  });
+}
+
+function renderPdfDoc(pageNumber, callback) {
+  pdfDoc.getPage(pageNumber).then(function(page) {
+    console.log('Page loaded');
+
+    var scale = 1.0;
+    var viewport = page.getViewport({scale: scale});
+
+    // Prepare canvas using PDF page dimensions
+    var canvas = document.getElementById('the-canvas');
+
+    var context = canvas.getContext('2d');
+
+    canvas.width = 0.35*window.innerWidth;
+    let canvasHeight = canvas.width / viewport.width * viewport.height * scale;
+    canvas.height = canvasHeight;
+
+    // Render PDF page into canvas context
+    var renderContext = {
+      canvasContext: context,
+      viewport: page.getViewport({scale: canvas.width / viewport.width * scale})
+    };
+    var renderTask = page.render(renderContext);
+    renderTask.promise.then(function () {
+      setCurrentPdfPageNumber(pageNumber);
+      console.log('Page rendered');
+
+      if (callback != null) {
+        callback();
+      }
+    });
+  });
+}
+
+function setCurrentPdfPageNumber(pageNumber) {
+  currentPdfPageNumber = pageNumber;
+  let label = document.querySelector("#label-current-page")
+  label.innerText = `Current page: ${pageNumber}`
+
+  let pdfDiv = document.querySelector("#pdf-container");
+  pdfDiv.style.display = null;
+
+  let rootDiv = document.querySelector("#rootDiv");
+  rootDiv.setAttribute("class", "half-left");
+}
+
+function closePdfViewer() {
+  let pdfDiv = document.querySelector("#pdf-container");
+  pdfDiv.style.display = "none";
+
+  let rootDiv = document.querySelector("#rootDiv");
+  rootDiv.setAttribute("class", "");
+}
+
+function changePdfPage(page_number) {
+    renderPdfDoc(page_number);
+}
+
+function pageNext() {
+  changePdfPage(currentPdfPageNumber + 1);
+}
+
+function pagePrevious() {
+  changePdfPage(currentPdfPageNumber - 1);
+}
+
+var currentPdfData = "";
+var currentPdfPageNumber = 1;
+var pdfDoc = null;
+
+</script>
+<script>
+function writeElementData(element) {
+  let divElementData = document.querySelector("#divElementData");
+
+  divElementData.innerText = "";
+
+  let addLine = (x) => {
+    let p = document.createElement("p");
+    p.innerText = x;
+    divElementData.appendChild(p);
+  }
+
+  addLine(`Element ID: ${element.element_id}`);
+}
+
+function drawUnstructuredRectOnCanvas(element) {
+  let metadata = element.metadata;
+
+  writeElementData(element);
+
+  if (metadata.page_number != currentPdfPageNumber) {
+      renderPdfDoc(metadata.page_number, () => drawUnstructuredRectOnCanvas(element));
+  }
+
+  let canvas = document.querySelector("#the-canvas");
+
+  let lw = metadata.coordinates.layout_width;
+  let lh = metadata.coordinates.layout_height;
+
+  let cw = canvas.width;
+  let ch = canvas.height;
+
+  let pts = metadata.coordinates.points.map(x => [x[0]/lw*cw, x[1]/lh*ch]);
+
+  let [x1, y1] = pts[0];
+  let [x2, y2] = pts[2];
+  let [rw, rh] = [x2-x1, y2-y1];
+
+  let context = canvas.getContext('2d');
+
+  context.strokeStyle = 'blue';
+  context.lineWidth = 2;
+  context.strokeRect(x1, y1, rw, rh);
+}
+
+</script>
+<style>
+#idDivRagTagging {
+  float: left;
+  width: 4%;
+  font-size: xx-small;
+  height: 100vh;
+  position: fixed;
+  top: 0px;
+}
+
+#idSelectRagTagging {
+  font-size: small;
+}
+
+#download-rag-prediction {
+  float: right;
+  font-size: xx-small;
+  position: fixed;
+  right: 0px;
+}
+
+.select-answer-button {
+  margin-left: 15px;
+}
+</style>
+</head>
+<body>
+<div id="idDivRagTagging" style="display: none;">
+  <select id="idSelectRagTagging" onchange="changeRagTagger();">
+    <option>A</option>
+    <option>B</option>
+    <option>C</option>
+  </select>
+  <div id="divRagResList">
+
+  </div>
+</div>
+<div id="divMain">
+<div class="divButtonReq">
+  <input type="file" id="file-input" accept=".json" style="display: none;" onchange="uploadDocument(this);" />
+  <input type="file" id="file-input-rag" accept=".json" style="display: none;" onchange="uploadRagResult(this);" />
+  <button id="upload-unstructured-json-button" style="width: 150px;">Upload Unstructured</button>
+  <label id="label-file-unstructured" style="margin-left: 3%;"></label>
+  <button id="upload-rag-prediction">Upload prediction</button>
+  <script>
+    let uploadUnstructuredJsonButton = document.querySelector("#upload-unstructured-json-button");
+    uploadUnstructuredJsonButton.addEventListener("click", e => {
+      let fileInput = document.querySelector("#file-input");
+      fileInput.click();
+    }, false);
+    let uploadRagPrediction = document.querySelector("#upload-rag-prediction");
+    uploadRagPrediction.addEventListener("click", e => {
+      let fileInputRag = document.querySelector("#file-input-rag");
+      fileInputRag.click();
+    }, false);
+  </script>
+
+    <button id="download-rag-prediction" onclick="download_rag_tags_as_json();">Download predictions</button>
+</div>
+
+<div>
+  <input type="file" id="pdf-input" accept=".pdf" style="display: none;">
+  <button id="upload-button" style="width: 150px;">Upload PDF</button>
+  <label id="label-file-pdf" style="margin-left: 3%;"></label>
+</div>
+
+<div id="pdf-container" style="display: none;">
+  <p>
+    <button onclick="pagePrevious();">Previous</button>
+    <label id="label-current-page"></label>
+    <button onclick="pageNext();">Next</button>
+    <button onclick="closePdfViewer();" style="float: right; margin-right: 5%;">X</button>
+  </p>
+  <canvas id="the-canvas"></canvas>
+  <div id="divElementData"></div>
+</div>
+
+<div id="divResp"></div>
+
+<div id="rootDiv">
+
+</div>
+</div>
+
+<script>
+const pdfInput = document.getElementById('pdf-input');
+const uploadButton = document.getElementById('upload-button');
+const pdfContainer = document.getElementById('pdf-container');
+
+uploadButton.addEventListener('click', () => {
+  pdfInput.click();
+});
+
+pdfInput.addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  const reader = new FileReader();
+
+  let labelFilePdf = document.querySelector("#label-file-pdf");
+  labelFilePdf.innerText = file.name;
+
+  reader.onload = (event) => {
+    const pdfDataBase64 = event.target.result;
+
+    const pdfData = atob(pdfDataBase64.replace(/^data:application\/pdf;base64,/, ""))
+    currentPdfData = pdfData;
+
+    applyPdfData(pdfData, 1);
+
+  };
+
+  reader.readAsDataURL(file);
+
+  e.target.value = "";
+});
+</script>
+</body>
+</html>
