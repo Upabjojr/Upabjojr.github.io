@@ -382,9 +382,9 @@ function changeRagTagger() {
   console.log(current);
   for (let res of current.results) {
     let a = document.createElement("a");
-    a.innerText = `${Math.floor(1000*res.score)/10}%`
-    a.href = `#eid_${res.id}`;
-    a.setAttribute("id", `anchor_${res.id}`);
+    a.innerText = `${Math.floor(1000*res._distance)/10}%`
+    a.href = `#eid_${res.element_id}`;
+    a.setAttribute("id", `anchor_${res.element_id}`);
     let p = document.createElement("p");
     p.appendChild(a);
     divRagResList.appendChild(p);
