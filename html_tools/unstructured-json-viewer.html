@@ -160,12 +160,25 @@ function renderDoc(elems) {
         buttonS.addEventListener("click", e => {
           selectBlockAsAnswer(e);
         }, false);
+        let inputSAnswer = document.createElement("input");
+        inputSAnswer.setAttribute("class", "select-answer-inputtext");
+        inputSAnswer.type = "text";
+        inputSAnswer.style["font-size"] = "xx-small";
+        inputSAnswer.style.display = "none";
         let text_dc_prob = (metadata != null && metadata.detection_class_prob != null)? ` (${Math.round(100 * metadata.detection_class_prob)}% class probability)` : "";
         ptype.innerText = elem.type + text_dc_prob;
         ptype.appendChild(button_identify);
         ptype.appendChild(buttonS);
+        ptype.appendChild(inputSAnswer);
         ptype.setAttribute("class", "non-selectable paragraph-elem-type");
         div.appendChild(ptype);
+
+        div.addEventListener("mouseup", function() {
+            const selection = window.getSelection();
+            const selectedText = selection.toString();
+            inputSAnswer.value = selectedText;
+            console.log("Selected text: " + selectedText);
+        });
 
         let pquestion = document.createElement("p");
         pquestion.setAttribute("class", "p-question-rag-answer");
@@ -363,6 +376,9 @@ function changeSelectRagAnswerColor() {
   for (let buttonS of document.querySelectorAll(".select-answer-button")) {
     buttonS.style.display = null;
   }
+  for (let inputSAnswer of document.querySelectorAll(".select-answer-inputtext")) {
+    inputSAnswer.style.display = null;
+  }
 }
 
 function addRagSelectAnswerButtons() {
@@ -456,7 +472,9 @@ function selectBlockAsAnswer(e) {
   let current = rag_result[selectRag.value];
   let domanda = current.domanda.trim();
   let element_id = e.target.parentElement.parentElement.id.replace(/^eid_/, "");
+  console.log(e);
   let pquestion = e.target.parentElement.parentElement.querySelector(".p-question-rag-answer");
+  let test_risposta_sel = e.target.parentElement.querySelector(".select-answer-inputtext").value;
   addDomandaToList(pquestion, domanda, element_id);
   if (localStorage.getItem("rag_predictions") == null) {
     localStorage.setItem("rag_predictions", JSON.stringify({}));
@@ -471,6 +489,7 @@ function selectBlockAsAnswer(e) {
   if (preds[file][domanda].filter(x => x.element_id == element_id).length == 0) {
     preds[file][domanda].push({
       element_id: element_id,
+      testo_risposta: test_risposta_sel
     });
   }
   localStorage.setItem("rag_predictions", JSON.stringify(preds));

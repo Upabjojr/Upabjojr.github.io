@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html>
+<head>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<!--
+<link rel="stylesheet" href="https://unpkg.com/easymde/dist/easymde.min.css">
+<script src="https://unpkg.com/easymde/dist/easymde.min.js"></script>
+-->
+<style>
+#sideBar {
+  width: 10%;
+  float: left;
+}
+
+#main {
+  width: 80%;
+  float: left;
+}
+
+#markdown_area {
+  white-space: pre-wrap;
+  width: 80%;
+  height: 80vh;
+}
+</style>
+</head>
+<body>
+<div>
+  <p>
+    <input type="file" id="file-input-pred" accept=".json" onchange="uploadPrediction(this);" />
+    <button id="uploadPred">Upload predictions</button>
+    <button id="downloadPred" style="margin-left: 15px;">Download prediction</button>
+  </p>
+<script>
+let predictions = [];
+var current = -1;
+
+function restoreNonEditState() {
+  markdown_div.style.display = null;
+  markdown_area.style.display = 'none';
+
+  save_button.style.display = 'none';
+  edit_button.style.display = null;
+}
+
+downloadPred.addEventListener("click", e => {
+  let blob = new Blob([JSON.stringify(predictions, null, 2)], {type: "application/json"});
+  let a = document.createElement("a");
+  a.href = window.URL.createObjectURL(blob);
+
+  let name = "transcription-predictions.json";
+  a.download = name;
+  a.name = name;
+  a.click();
+  a.remove();
+}, false);
+
+function addPrediction(data) {
+  document.getElementById('markdown_area').style.display = 'none';
+  markdown_div.style.display = null;
+
+  predictions.length = 0;
+  predictions.push(...data);
+
+  sideBar.innerHTML = "";
+
+  for (var i = 0; i < data.length; i++) {
+    let elem = data[i];
+
+    let image_url = elem.image_url;
+    let transcription = elem.transcription;
+
+    let curi = i;
+    let a = document.createElement("button");
+    a.innerText = `${i}`;
+
+    a.addEventListener("click", e => {
+      main.style.display = null;
+      image_area.setAttribute("src", image_url);
+      current = curi;
+      markdown_div.innerHTML = marked.parse(predictions[curi].transcription);
+      restoreNonEditState();
+    }, false);
+
+    let p = document.createElement("p");
+    p.appendChild(a);
+
+    sideBar.appendChild(p);
+  }
+}
+
+async function uploadPrediction(input_elem) {
+  const file = input_elem.files[0];
+
+  if (file.type !== 'application/json') {
+      console.error('Only JSON files are supported.');
+      return;
+  }
+
+  const fileReader = new FileReader();
+
+  fileReader.addEventListener('load', (event) => {
+      const fileContents = event.target.result;
+
+      try {
+          const jsonData = JSON.parse(fileContents);
+          console.log('Parsed JSON data:', jsonData);
+          result = jsonData;
+          addPrediction(result);
+
+          main.style.display = 'none';
+          restoreNonEditState();
+      } catch (error) {
+          alert('Error parsing JSON file:', error);
+      }
+  });
+
+  fileReader.addEventListener('error', (event) => {
+      console.error('Error reading file:', event.target.error);
+  });
+
+  fileReader.readAsText(file);
+}
+
+uploadPred.addEventListener("click", (e) => {
+  document.querySelector("#file-input-pred").click();
+}, false);
+</script>
+</div>
+<div id="sideBar">
+
+</div>
+
+<div id="main" style="display: none;">
+<img id="image_area" src=""></img>
+
+<p>
+  <button id="edit_button">Edit</button>
+  <button id="save_button" style="display: none;">Save</button>
+</p>
+
+<div id="markdown_div">
+
+</div>
+<script>
+
+edit_button.addEventListener("click", e => {
+
+  let curpred = predictions[current];
+  let image_url = curpred.image_url;
+  let transcription = curpred.transcription;
+
+  let markdown_area = document.getElementById('markdown_area');
+
+  markdown_area.value = transcription;  // .replace(/\n/, "\n<br>\n");
+
+  // const easyMDE = new EasyMDE({element: document.getElementById('markdown_area')});
+
+  markdown_area.style.display = null;
+  markdown_div.style.display = 'none';
+
+  save_button.style.display = null;
+  edit_button.style.display = 'none';
+}, false);
+
+save_button.addEventListener("click", e => {
+  let md_text = markdown_area.value.replace(/\n*<br>\n*/, "\n");
+  predictions[current].transcription = md_text;
+  markdown_div.innerHTML = marked.parse(md_text);
+
+  restoreNonEditState();
+}, false);
+</script>
+<textarea id="markdown_area" style="display: none; white-space: pre-wrap;">
+</textarea>
+
+</div>
+
+</body>
+</html>
