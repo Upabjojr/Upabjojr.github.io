@@ -131,8 +131,24 @@ uploadPred.addEventListener("click", (e) => {
 
 </div>
 
+<style>
+.div-resizable-img {
+  width: 75%;
+  resize: both;
+  overflow: auto;
+}
+
+.div-resizable-img img {
+  display: block;
+  object-fit: cover;
+  width: 100%;
+  height: 100%;
+}
+</style>
 <div id="main" style="display: none;">
-<img id="image_area" src=""></img>
+<div class="div-resizable-img">
+  <img id="image_area" src="">
+</div>
 
 <p>
   <button id="edit_button">Edit</button>
