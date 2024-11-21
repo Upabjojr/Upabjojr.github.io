@@ -144,6 +144,9 @@ function renderDoc(elems) {
         let div = document.createElement("div");
         div.setAttribute("id", `eid_${elem.element_id}`);
         let ptype = document.createElement("p");
+        let span_element_id = document.createElement("span");
+        span_element_id.innerText = `${elem.element_id}`;
+        span_element_id.style["margin-left"] = "10px";
         let button_identify = document.createElement("button");
         button_identify.innerText = "Identify";
         button_identify.setAttribute("class", "button_identify");
@@ -167,6 +170,7 @@ function renderDoc(elems) {
         inputSAnswer.style.display = "none";
         let text_dc_prob = (metadata != null && metadata.detection_class_prob != null)? ` (${Math.round(100 * metadata.detection_class_prob)}% class probability)` : "";
         ptype.innerText = elem.type + text_dc_prob;
+        ptype.appendChild(span_element_id);
         ptype.appendChild(button_identify);
         ptype.appendChild(buttonS);
         ptype.appendChild(inputSAnswer);
@@ -335,6 +339,8 @@ function addRagTagging(rag_result) {
 }
 
 function changeSelectRagAnswerColor() {
+  addNonSimilarTaggedElems();
+
   let label = document.querySelector("#label-file-unstructured");
   let file = label.innerText;
 
@@ -362,7 +368,7 @@ function changeSelectRagAnswerColor() {
       let element_id = value.element_id;
       let divp = document.querySelector(`#eid_${element_id}`);
       let pquestion = divp.querySelector(".p-question-rag-answer");
-      addDomandaToList(pquestion, domanda, element_id);
+      addDomandaToList(pquestion, domanda, element_id, value.testo_risposta);
 
       if (domanda == domandaSel) {
         let a = document.querySelector(`#anchor_${element_id}`);
@@ -390,39 +396,110 @@ function addRagSelectAnswerButtons() {
   }
 }
 
+let added_elems = new Set();
+
 function changeRagTagger() {
   let divRagResList = document.querySelector("#divRagResList");
   let selectRag = document.querySelector("#idSelectRagTagging");
   divRagResList.innerText = "";
+  added_elems.clear();
+  let extraTaggedList = document.createElement("div");
+  extraTaggedList.setAttribute("id", "extraTaggedList");
+  divRagResList.appendChild(extraTaggedList);
   let current = rag_result[selectRag.value];
   console.log(current);
+
   for (let res of current.results) {
     let a = document.createElement("a");
     a.innerText = `${Math.floor(1000*res._distance)/10}%`
     a.href = `#eid_${res.element_id}`;
     a.setAttribute("id", `anchor_${res.element_id}`);
+    a.addEventListener("click", e => {
+        setTimeout(() => window.scrollBy(0, -40), 50);
+      }, false);
     let p = document.createElement("p");
     p.appendChild(a);
     divRagResList.appendChild(p);
+    added_elems.add(res.element_id);
   }
 
   changeSelectRagAnswerColor();
 }
 
-function addDomandaToList(pquestion, domanda, element_id) {
+function addNonSimilarTaggedElems() {
+  let selectRag = document.querySelector("#idSelectRagTagging");
+
+  let preds = get_rag_predictions();
+  let label = document.querySelector("#label-file-unstructured");
+  let file = label.innerText;
+
+  extraTaggedList.innerText = "";
+
+  let preds_file = preds[file];
+  if (preds_file == null) {
+    return;
+  }
+
+  let cur_preds = preds_file[selectRag.selectedOptions[0].innerText];
+
+  if (cur_preds == null) {
+    return;
+  }
+
+  for (let domanda of cur_preds) {
+    if (added_elems.has(domanda.element_id)) {
+      continue;
+    }
+    let a = document.createElement("a");
+    a.innerText = `new`
+    a.href = `#eid_${domanda.element_id}`;
+    a.setAttribute("id", `anchor_${domanda.element_id}`);
+    let p = document.createElement("p");
+    p.appendChild(a);
+    extraTaggedList.appendChild(p);
+  }
+}
+
+function get_rag_predictions() {
+  let preds_str = localStorage.getItem("rag_predictions");
+  if (preds_str == null) {
+    preds_str = JSON.stringify({});
+    localStorage.setItem("rag_predictions", preds_str);
+  }
+  let preds = JSON.parse(preds_str);
+  return preds;
+}
+
+function addDomandaToList(pquestion, domanda, element_id, test_risposta_sel) {
   var flag = true;
   let subp = pquestion.querySelectorAll("p");
   if (subp != null) {
     for (let pqa1 of subp) {
-      if (pqa1.innerText.replace(/X$/, "") == domanda) {
-        flag = false;
-        break;
+      if (pqa1.querySelector(".pqa_span").innerText == domanda) {
+        if (pqa1.querySelector(".pqtext").innerText == test_risposta_sel) {
+          flag = false;
+          break;
+        } else {
+          pquestion.removeChild(pqa1);
+        }
       }
     }
   }
   if (flag) {
     let pqa = document.createElement("p");
-    pqa.innerText = domanda;
+    let pqa_span = document.createElement("span");
+    pqa_span.innerText = domanda;
+    pqa_span.classList.add("pqa_span");
+    pqa.appendChild(pqa_span);
+
+    let pqtext = document.createElement("span");
+    pqtext.innerText = (test_risposta_sel != null)? test_risposta_sel : "";
+    pqtext.style.color = "green";
+    pqtext.style["margin-left"] = "15px";
+    pqtext.style["font-weight"] = "bold";
+    pqtext.classList.add("pqtext");
+    pqa.appendChild(pqtext);
+
     let buttonX = document.createElement("button");
     buttonX.innerText = "X";
     buttonX.style["margin-left"] = "15pt";
@@ -455,10 +532,12 @@ function removeDomandaAnswerForRag(domanda, element_id) {
 
   let drisp = preds[file][domanda];
 
-  let drisp2 = drisp.filter(x => x.element_id != element_id);
-  preds[file][domanda] = drisp2;
-  if (drisp2.length == 0) {
-    delete preds[file][domanda];
+  if (drisp != null) {
+    let drisp2 = drisp.filter(x => x.element_id != element_id);
+    preds[file][domanda] = drisp2;
+    if (drisp2.length == 0) {
+      delete preds[file][domanda];
+    }
   }
   localStorage.setItem("rag_predictions", JSON.stringify(preds));
 
@@ -475,7 +554,7 @@ function selectBlockAsAnswer(e) {
   console.log(e);
   let pquestion = e.target.parentElement.parentElement.querySelector(".p-question-rag-answer");
   let test_risposta_sel = e.target.parentElement.querySelector(".select-answer-inputtext").value;
-  addDomandaToList(pquestion, domanda, element_id);
+  addDomandaToList(pquestion, domanda, element_id, test_risposta_sel);
   if (localStorage.getItem("rag_predictions") == null) {
     localStorage.setItem("rag_predictions", JSON.stringify({}));
   }
@@ -486,11 +565,23 @@ function selectBlockAsAnswer(e) {
   if (!(domanda in preds[file])) {
     preds[file][domanda] = [];
   }
-  if (preds[file][domanda].filter(x => x.element_id == element_id).length == 0) {
+  let domanda_el_id_arr = preds[file][domanda].filter(x => x.element_id == element_id);
+  if (domanda_el_id_arr.length == 0) {
     preds[file][domanda].push({
       element_id: element_id,
       testo_risposta: test_risposta_sel
     });
+  } else {
+    let domanda_el_id = domanda_el_id_arr[0];
+    for (var i = 0; i < preds[file][domanda].length; i++) {
+      let x = preds[file][domanda][i];
+      if (x.element_id == element_id) {
+        preds[file][domanda][i] = {
+          element_id: element_id,
+          testo_risposta: test_risposta_sel
+        };
+      }
+    }
   }
   localStorage.setItem("rag_predictions", JSON.stringify(preds));
 
@@ -686,8 +777,8 @@ function drawUnstructuredRectOnCanvas(element) {
 </div>
 <div id="divMain">
 <div class="divButtonReq">
-  <input type="file" id="file-input" accept=".json" style="display: none;" onchange="uploadDocument(this);" />
-  <input type="file" id="file-input-rag" accept=".json" style="display: none;" onchange="uploadRagResult(this);" />
+  <input type="file" id="file-input" accept=".unstructured.json" style="display: none;" onchange="uploadDocument(this);" />
+  <input type="file" id="file-input-rag" accept=".question_similarities.json" style="display: none;" onchange="uploadRagResult(this);" />
   <button id="upload-unstructured-json-button" style="width: 150px;">Upload Unstructured</button>
   <label id="label-file-unstructured" style="margin-left: 3%;"></label>
   <button id="upload-rag-prediction">Upload prediction</button>
