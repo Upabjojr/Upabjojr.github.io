@@ -1,0 +1,8 @@
+Third-party components vendored in this bundle
+================================================
+KaTeX 0.16.22      MIT           https://katex.org
+(not vendored here) Pyodide 0.28.3  MPL-2.0       https://pyodide.org  (core runtime, python_stdlib.zip)
+CPython (in (not vendored here) Pyodide)  PSF-2.0    https://www.python.org
+SymPy 1.14.0 (wheel from PyPI)  BSD-3  https://www.sympy.org
+mpmath (wheel)        BSD-3     https://mpmath.org
+sympy-editor          BSD-3
