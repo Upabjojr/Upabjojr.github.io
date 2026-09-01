@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy — SymPy editor</title>
+<meta name="description" content="SymPy editor collects no data: the mathematics stays on your device.">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+:root { color-scheme: light dark; }
+body { margin: 0; padding: 0 1.2rem 5rem; background: #ffffff; color: #1f2328;
+       font: 16px/1.65 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 46rem; margin: 0 auto; }
+header { padding: 3rem 0 1.6rem; }
+h1 { font-size: 1.7rem; margin: 0 0 0.3rem; letter-spacing: -0.01em;
+      display: flex; align-items: center; gap: 0.6rem; }
+h1 img { border-radius: 0.7rem; }
+header p.lead { margin: 0.4rem 0 0; color: #656d76; }
+a { color: #3b82f6; }
+nav.crumbs { font-size: 0.9rem; margin: 0 0 0.8rem; }
+nav.crumbs a { text-decoration: none; }
+.card { border: 1px solid #d0d7de; border-radius: 0.8rem; padding: 1.1rem 1.3rem;
+        margin: 1.1rem 0; display: flex; gap: 1rem; align-items: flex-start; }
+.card svg { flex: 0 0 auto; width: 2.1rem; height: 2.1rem; margin-top: 0.15rem;
+            stroke: #3b82f6; }
+.card h2 { font-size: 1.05rem; margin: 0 0 0.3rem; }
+.card p { margin: 0 0 0.5rem; } .card p:last-child { margin-bottom: 0; }
+.card ul { margin: 0.3rem 0 0.5rem; padding-left: 1.1rem; }
+pre.licence { border: 1px solid #d0d7de; border-radius: 0.8rem; padding: 1.2rem 1.4rem;
+              overflow-x: auto; font-size: 0.85rem; line-height: 1.55; }
+footer { margin-top: 3rem; padding-top: 1.2rem; border-top: 1px solid #d0d7de;
+         color: #656d76; font-size: 0.9rem; }
+@media (prefers-color-scheme: dark) {
+  body { background: #1e1e1e; color: #e6e6e6; }
+  header p.lead, footer { color: #a0a0a0; }
+  .card, pre.licence, footer { border-color: #444; }
+}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <nav class="crumbs"><a href="index.html">← SymPy editor</a></nav>
+  <h1><img src="icon.svg" alt="" width="44" height="44"> Privacy</h1>
+  <p class="lead">The short version: the editor computes on your device, and nothing you type is sent anywhere by us.</p>
+</header>
+<section class="card"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="2.5" width="10" height="19" rx="2.2"/><path d="M10.5 18.5h3"/></svg><div><h2>Everything stays on your device</h2>
+<p>The editor computes where it runs. Expressions, sessions, their histories
+and the zoom are kept in the app's own storage on your device (the browser's
+local storage); deleting a session, or the app or the site data, removes
+them. There are no accounts, no cookies, no analytics and no telemetry
+&mdash; the source is public, and none of that is in it.</p></div></section><section class="card"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 9.5 5.6 4h12.8l1.1 5.5"/><path d="M4.5 9.5h15V19a1.8 1.8 0 0 1-1.8 1.8H6.3A1.8 1.8 0 0 1 4.5 19Z"/><path d="M9.5 13.5h5"/></svg><div><h2>The apps and the stores</h2>
+<p>The Android and iOS apps carry everything they need and make no network
+requests: nothing you type ever leaves the phone. Installing them through
+Google Play or the App Store means Google or Apple collect their own data
+&mdash; downloads, crashes, device statistics &mdash; under
+<a href="https://policies.google.com/privacy">Google's</a> and
+<a href="https://www.apple.com/legal/privacy/">Apple's</a> privacy policies;
+of that, the developer only ever sees aggregate statistics.</p></div></section><section class="card"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.6 2.3 3.9 5.1 3.9 8.5s-1.3 6.2-3.9 8.5c-2.6-2.3-3.9-5.1-3.9-8.5S9.4 5.8 12 3.5Z"/></svg><div><h2>This website</h2>
+<p>These pages are served by GitHub Pages, which logs visits (your IP
+address) as any web host does &mdash; see the
+<a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement">GitHub
+Privacy Statement</a>. The derivations on the front page carry their own
+rendering and load nothing else. The <em>editor</em> page fetches its
+Python runtime (Pyodide, SymPy) from public CDNs &mdash; jsDelivr and
+PyPI's file host &mdash; the way any download does, so those services see
+that request; what you then type in the editor still stays in your
+browser.</p></div></section><section class="card"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5.5" width="18" height="13" rx="2"/><path d="m4 7 8 6 8-6"/></svg><div><h2>If you write to us</h2>
+<p>The project has no chat and collects no messages. If you open an issue or
+a discussion on the
+<a href="https://github.com/Upabjojr/sympy-editor">GitHub repository</a>,
+that is public and processed by GitHub under its own terms, and we see what
+you chose to post &mdash; nothing more.</p></div></section>
+<footer>This page describes SymPy editor 0.1.0 (September 2026). If the facts change, this page changes with them.</footer>
+</main>
+</body>
+</html>

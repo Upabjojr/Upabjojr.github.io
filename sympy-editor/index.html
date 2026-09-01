@@ -677,6 +677,12 @@
 .se-history-head .se-play-all { visibility: hidden; }
 .se-history-head .se-play-all.se-on { visibility: visible; }
 .se-history-head .se-play-zoom { padding: 0.3rem 0.55rem; line-height: 1; min-width: 2.1em; }
+/* The speed: two dials, and the figure between them.  The readout is as wide
+ * as the slowest it goes (0.25\00d7), so changing speed moves nothing, and the
+ * size stands a clear step away - the two are not the same kind of thing. */
+.se-history-head .se-play-speed { padding: 0.3rem 0.5rem; line-height: 1; }
+.se-history-head .se-play-rate { padding: 0.3rem 0.4rem; line-height: 1; min-width: 3.4em; font-variant-numeric: tabular-nums; }
+.se-history-head .se-head-apart { margin-left: 1rem; }
 .se-history-head .se-head-save {
   font: inherit; font-size: 13px; padding: 0.3rem 0.6rem;
   border: 1px solid var(--se-border); border-radius: 0.3rem;
@@ -876,6 +882,9 @@ h2.shelf { font-size: 1.1rem; text-transform: uppercase; letter-spacing: 0.06em;
 footer { margin-top: 4rem; padding-top: 1.4rem; border-top: 1px solid #d0d7de;
          color: #656d76; font-size: 0.9rem; }
 footer code { font-size: 0.85em; }
+footer nav.legal { margin-top: 0.7rem; }
+footer nav.legal a { color: inherit; }
+header a.button code { font-size: 0.85em; }
 @media (prefers-color-scheme: dark) {
   body { background: #1e1e1e; color: #e6e6e6; }
   header p, .card p, .card .steps, footer, h2.shelf { color: #a0a0a0; }
@@ -899,6 +908,7 @@ footer code { font-size: 0.85em; }
   <div class="actions">
     <a class="button primary" href="editor.html">Open the editor</a>
     <a class="button" href="https://github.com/Upabjojr/sympy-editor">Source on GitHub</a>
+    <a class="button" href="https://pypi.org/project/sympy-editor/"><code>pip install sympy-editor</code></a>
   </div>
 </header>
 <h2 class="shelf">Worked derivations</h2>
@@ -965,7 +975,11 @@ footer code { font-size: 0.85em; }
 <footer>Each one is a <code>sympy_editor.History</code>: a list of expressions
 and a word about what turned each into the next (<code>examples/derivations/</code>
 in the repository). Press <b>Play</b> on any of them, or <b>Save</b> to keep it
-as a single file that works offline.</footer>
+as a single file that works offline.
+<nav class="legal"><a href="https://github.com/Upabjojr/sympy-editor">GitHub</a> ·
+<a href="https://pypi.org/project/sympy-editor/">PyPI</a> ·
+<a href="license.html">License (BSD 3-Clause)</a> ·
+<a href="privacy.html">Privacy</a></nav></footer>
 </main>
 <script>
 /*
@@ -1052,7 +1066,11 @@ var SympyEditor = (function () {
     ".player button:hover { border-color: #3b82f6; }",
     ".player .count { font-size: 0.85rem; color: #656d76; font-variant-numeric: tabular-nums; }",
     ".player .zoom-level { font-variant-numeric: tabular-nums; min-width: 4em; }",
+    ".player .speed-level { font-variant-numeric: tabular-nums; min-width: 3.2em; }",
     ".player .group { display: inline-flex; align-items: center; gap: 0.4rem; }",   /* wraps as a unit */
+    ".player .group.apart { margin-left: 1rem; }",   /* the size is not the speed: leave a gap between them */
+    ".player button svg { display: block; width: 1.15em; height: 1.15em; }",
+    ".player .speed-slower, .player .speed-faster { padding: 0.25rem 0.5rem; }",
     ".player .exit { visibility: hidden; }",   /* keeps its place: nothing moves when the slideshow starts */
     "body.slides .player .exit { visibility: visible; }",
     ".player .play { min-width: 6.2em; }",     /* Play and Pause are not the same width */
@@ -1119,7 +1137,7 @@ var SympyEditor = (function () {
     "</ul></section>",
     "<section><h3>History and sessions</h3><ul>",
     "<li><b>History</b> shows every step and what changed (green: what a step brought, red: what it lost); tap a step to go back to it.</li>",
-    "<li>The strip above plays the history as a slideshow \u2014 a step and the change that produced it on one screen \u2014 and its <b>\u25c0 \u25b6</b> walk the steps one at a time when it is not playing; <b>\u2212 / +</b> set the size of the formulas (Ctrl+wheel and two fingers too).</li>",
+    "<li>The strip above plays the history as a slideshow \u2014 a step and the change that produced it on one screen \u2014 and its <b>\u25c0 \u25b6</b> walk the steps one at a time when it is not playing; the two dials halve and double the speed, which is written between them (<kbd>,</kbd> and <kbd>.</kbd> while it plays), and <b>\u2212 / +</b> set the size of the formulas (Ctrl+wheel and two fingers too).</li>",
     "<li><b>Save \u25be</b> writes it out: a self-contained web page that works offline and plays on its own, or a Python script that rebuilds every step with SymPy.</li>",
     "<li><b>\u2630</b> lists the sessions, where the page keeps several. A session is labelled with its formula until you give it a name of your own (the pencil beside it, or a double-click), which nothing overwrites.</li>",
     "</ul></section>",
@@ -1405,6 +1423,25 @@ var SympyEditor = (function () {
       'stroke-linejoin="round" d="' + (full ? back : out) + '"/></svg>';
   }
 
+  /** A speedometer: the needle low over an almost empty dial, or high over
+   *  a full one.  The slideshow's speed goes on the button between the two,
+   *  so neither of these carries a figure - and a dial cannot be mistaken
+   *  for the arrows beside it, which mean the step before and the step
+   *  after. */
+  function gaugeSvg(fast) {
+    // A dial across the whole 16x16 box: at 13px there is no room for a
+    // drawing that is merely suggested.  The needle sits at 155 degrees
+    // round it or at 25, and the lit part of the dial runs out to meet it.
+    var end = fast ? "13.71 9.34" : "2.29 9.34";
+    var needle = fast ? "M8 12 12.02 10.13" : "M8 12 3.98 10.13";
+    return '<svg class="se-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">' +
+      '<g fill="none" stroke="currentColor" stroke-linecap="round">' +
+      '<path d="M1.7 12A6.3 6.3 0 0 1 14.3 12" stroke-width="1.5" opacity="0.28"/>' +
+      '<path d="M1.7 12A6.3 6.3 0 0 1 ' + end + '" stroke-width="1.5"/>' +
+      '<path d="' + needle + '" stroke-width="1.9"/></g>' +
+      '<circle cx="8" cy="12" r="1" fill="currentColor"/></svg>';
+  }
+
   /** Give `boxCls` to the marked elements (`cls`) that have no marked
    *  ancestor: one tinted box per changed region, over the node's whole
    *  visual extent, instead of an inline background per level (which paints
@@ -1542,6 +1579,10 @@ var SympyEditor = (function () {
       '<span class="count"></span>' +
       '<button type="button" class="exit" title="Back to the whole history (Esc)">Show all</button></span>' +
       '<span class="group">' +
+      '<button type="button" class="speed-slower" title="Slower: half the speed (,)" aria-label="Slower">' + gaugeSvg(false) + '</button>' +
+      '<button type="button" class="speed-level" title="Back to the normal speed">1\u00d7</button>' +
+      '<button type="button" class="speed-faster" title="Faster: twice the speed (.)" aria-label="Faster">' + gaugeSvg(true) + '</button></span>' +
+      '<span class="group apart">' +
       '<button type="button" class="zoom-out" title="Smaller (Ctrl+wheel)">\u2212</button>' +
       '<button type="button" class="zoom-level" title="Back to the normal size">100%</button>' +
       '<button type="button" class="zoom-in" title="Larger (Ctrl+wheel)">+</button></span></div>';
@@ -1575,6 +1616,7 @@ var SympyEditor = (function () {
     "  var body = document.body, count = bar.querySelector('.count');",
     "  var play = bar.querySelector('.play'), i = 0, timer = null;",
     "  var STEP_MS = 2200, zoom = 1, level = bar.querySelector('.zoom-level');",
+    "  var speed = 1, rate = bar.querySelector('.speed-level');",
     "  // The formulas are the point: they must be as big or as small as the",
     "  // reader wants, in the listing as much as in the slideshow.",
     "  function setZoom(z) {",
@@ -1582,6 +1624,15 @@ var SympyEditor = (function () {
     "    document.documentElement.style.setProperty('--se-report-zoom', zoom);",
     "    level.textContent = Math.round(zoom * 100) + '%';",
     "    if (typeof announce === 'function') announce();",
+    "  }",
+    "  // How fast it plays: a step every 2.2s at 1x, and the buttons halve or",
+    "  // double that.  A factor, not a duration - \u00bd\u00d7 is what \"half as fast\"",
+    "  // means, and it needs neither a + nor a - to say it.",
+    "  function setSpeed(s) {",
+    "    speed = Math.max(0.25, Math.min(4, s));",
+    "    rate.textContent = (Math.round(speed * 100) / 100) + '\\u00d7';",
+    "    if (timer) { clearInterval(timer); timer = setInterval(tick, STEP_MS / speed); }",
+    "    announce();",
     "  }",
     "  function clear() {",
     "    for (var k = 0; k < nodes.length; k++) nodes[k].classList.remove('slide-on', 'slide-top', 'slide-bottom', 'slide-here');",
@@ -1615,7 +1666,7 @@ var SympyEditor = (function () {
     "  function stepBy(d) { if (body.classList.contains('slides')) enter(i + d); else locate(i + d); }",
     "  function start() {",
     "    enter(i + 1 >= slides.length ? 0 : i);",
-    "    timer = setInterval(tick, STEP_MS);",
+    "    timer = setInterval(tick, STEP_MS / speed);",
     "    play.innerHTML = '\\u23f8 Pause';",
     "  }",
     "  // leaving the slideshow lands on the step it was showing, not at the top",
@@ -1627,6 +1678,9 @@ var SympyEditor = (function () {
     "  bar.querySelector('.zoom-out').addEventListener('click', function () { setZoom(zoom / 1.2); });",
     "  bar.querySelector('.zoom-in').addEventListener('click', function () { setZoom(zoom * 1.2); });",
     "  level.addEventListener('click', function () { setZoom(1); });",
+    "  bar.querySelector('.speed-slower').addEventListener('click', function () { setSpeed(speed / 2); });",
+    "  bar.querySelector('.speed-faster').addEventListener('click', function () { setSpeed(speed * 2); });",
+    "  rate.addEventListener('click', function () { setSpeed(1); });",
     "  // two fingers pinch the formulas, as everywhere else in the editor",
     "  var pinch = null;",
     "  function spread(t) {",
@@ -1653,6 +1707,8 @@ var SympyEditor = (function () {
     "    else if (ev.key === 'ArrowLeft') { stop(); show(i - 1); }",
     "    else if (ev.key === 'Escape') { exit(); return; }",
     "    else if (ev.key === ' ') { if (timer) stop(); else start(); }",
+    "    else if (ev.key === ',' || ev.key === '<') setSpeed(speed / 2);",
+    "    else if (ev.key === '.' || ev.key === '>') setSpeed(speed * 2);",
     "    else return;",
     "    ev.preventDefault();",
     "  });",
@@ -1661,7 +1717,7 @@ var SympyEditor = (function () {
     "  // drives the same engine from its own fixed strip, so the controls do",
     "  // not scroll away with the steps.",
     "  var listeners = [];",
-    "  function state() { return {index: i, total: slides.length, playing: !!timer, zoom: zoom, on: body.classList.contains('slides')}; }",
+    "  function state() { return {index: i, total: slides.length, playing: !!timer, zoom: zoom, speed: speed, on: body.classList.contains('slides')}; }",
     "  function announce() { for (var k = 0; k < listeners.length; k++) listeners[k](state()); }",
     "  var _show = show, _stop = stop, _enter = enter, _start = start, _exit = exit;",
     "  show = function (n) { _show(n); announce(); };",
@@ -1676,6 +1732,8 @@ var SympyEditor = (function () {
     "    exit: function () { exit(); }, state: state,",
     "    zoomIn: function () { setZoom(zoom * 1.2); }, zoomOut: function () { setZoom(zoom / 1.2); },",
     "    setZoom: setZoom,",
+    "    slower: function () { setSpeed(speed / 2); }, faster: function () { setSpeed(speed * 2); },",
+    "    setSpeed: setSpeed,",
     "    subscribe: function (cb) { listeners.push(cb); cb(state()); }",
     "  };",
     "})();"
@@ -1698,21 +1756,30 @@ var SympyEditor = (function () {
     var next = h("button", { type: "button", class: "se-play-step", title: "The next step (\u2192)", "aria-label": "Next slide" }, ["\u25b6"]);
     var count = h("span", { class: "se-play-count" });
     var all = h("button", { type: "button", class: "se-play-all", title: "Back to the whole history (Esc)" }, ["Show all"]);
+    // How fast it runs: two dials, halving and doubling, with the speed
+    // itself written between them - the only figure in the group, and never
+    // a + or a - to be taken for the size two groups along.
+    var slower = h("button", { type: "button", class: "se-play-speed", title: "Slower: half the speed (,)", "aria-label": "Slower" }, []);
+    var rate = h("button", { type: "button", class: "se-play-rate", title: "Back to the normal speed" }, ["1\u00d7"]);
+    var faster = h("button", { type: "button", class: "se-play-speed", title: "Faster: twice the speed (.)", "aria-label": "Faster" }, []);
+    slower.innerHTML = gaugeSvg(false);
+    faster.innerHTML = gaugeSvg(true);
     // The formulas have a size of their own here: the buttons, Ctrl+wheel and
     // two fingers all drive the same zoom inside the report.
     var out = h("button", { type: "button", class: "se-play-zoom", title: "Smaller formulas (Ctrl+wheel, pinch)", "aria-label": "Smaller" }, ["\u2212"]);
     var level = h("button", { type: "button", class: "se-play-level", title: "Back to the normal size" }, ["100%"]);
     var into = h("button", { type: "button", class: "se-play-zoom", title: "Larger formulas (Ctrl+wheel, pinch)", "aria-label": "Larger" }, ["+"]);
-    // Two groups, each of which wraps as a unit: playing the history, and
-    // the size of it.  A "- 100% +" split across two lines is nobody's idea
-    // of a control.
+    // Three groups, each of which wraps as a unit: playing the history, how
+    // fast, and how big.  A "- 100% +" split across two lines is nobody's
+    // idea of a control - and the last two stand further apart, so a speed
+    // is never read as a size.
     var playing = h("span", { class: "se-head-group" }, [play, prev, next, count, all]);
-    var zooming = h("span", { class: "se-head-group" }, [out, level, into]);
-    var els = [play, prev, next, count, all, out, level, into];
+    var speeding = h("span", { class: "se-head-group" }, [slower, rate, faster]);
+    var zooming = h("span", { class: "se-head-group se-head-apart" }, [out, level, into]);
     count.textContent = "1 / " + total;
     level.textContent = "100%";
     var api = null;
-    var pressable = [play, prev, next, all, out, into, level];
+    var pressable = [play, prev, next, all, slower, rate, faster, out, into, level];
     pressable.forEach(function (el) { el.disabled = true; });   // until the report answers
     frame.addEventListener("load", function () {
       api = frame.contentWindow && frame.contentWindow.sympyHistoryPlayer;
@@ -1726,6 +1793,7 @@ var SympyEditor = (function () {
         play.textContent = st.playing ? "\u23f8 Pause" : "\u25b6 Play";
         count.textContent = (st.index + 1) + " / " + st.total;
         level.textContent = Math.round(st.zoom * 100) + "%";
+        rate.textContent = (Math.round((st.speed || 1) * 100) / 100) + "\u00d7";
         // "Show all" keeps its place when it has nothing to do: hiding it
         // outright shifted every button beside it the moment Play was
         // pressed, so it goes invisible, not away.
@@ -1739,7 +1807,10 @@ var SympyEditor = (function () {
     out.addEventListener("click", function () { if (api) api.zoomOut(); });
     into.addEventListener("click", function () { if (api) api.zoomIn(); });
     level.addEventListener("click", function () { if (api) api.setZoom(1); });
-    return [playing, zooming];
+    slower.addEventListener("click", function () { if (api) api.slower(); });
+    faster.addEventListener("click", function () { if (api) api.faster(); });
+    rate.addEventListener("click", function () { if (api) api.setSpeed(1); });
+    return [playing, speeding, zooming];
   }
 
   /** Offer `text` as a file: the host app, the share sheet, or a download. */
@@ -1852,6 +1923,10 @@ var SympyEditor = (function () {
       var root = h("div", { class: "sympy-editor" });
       this.root = root;
       this.buttons = {};
+      // Every snapshot may carry method lists (see _fillMethods); a read-only
+      // editor has no menu to show them in but still receives them, and
+      // setState must not trip over a table that was never made.
+      this._methodsCache = {};   // entries by type name, from the snapshots (Document piggybacks new types)
       this.toolbar = h("div", { class: "se-toolbar", role: "toolbar" });
       // The tools sit in their own strip: on a narrow screen it scrolls
       // sideways instead of wrapping onto several rows.
@@ -1950,7 +2025,6 @@ var SympyEditor = (function () {
         this.methodsMenu = h("select", { class: "se-methods", hidden: "",
           title: "Methods of the selection's class (of the whole expression when nothing is selected): pick one to call it; a method with parameters asks for them" });
         current.appendChild(this.methodsMenu);
-        this._methodsCache = {};   // entries by type name, from the snapshots (Document piggybacks new types)
         // Function box: search SymPy's functions; a picked function that needs
         // parameters asks for them (see _showFnForm).
         this.fnInput = h("input", { class: "se-fn", type: "text", placeholder: "SymPy function… (search)",
@@ -4644,7 +4718,18 @@ var SympyEditor = (function () {
 
     _saveSessions(store) {
       this._sessionStore = store;
-      try { localStorage.setItem(SESSIONS_KEY, JSON.stringify(store)); } catch (e) { /* no storage */ }
+      try {
+        localStorage.setItem(SESSIONS_KEY, JSON.stringify(store));
+        this._storageFull = false;
+      } catch (e) {
+        // No storage at all (a private window, say) is nothing to report; a
+        // full one is: the sessions silently stopping being kept is worse
+        // than a word about it.
+        if (!this._storageFull && e && /quota|exceeded/i.test(String(e.name) + " " + String(e.message))) {
+          this._storageFull = true;
+          this._setStatus("The sessions could not be saved: the browser's storage is full (delete a session or two)");
+        }
+      }
     }
 
     _currentSession() {
@@ -5383,11 +5468,21 @@ var SympyEditor = (function () {
       if (this.typeMenu) this.typeMenu.disabled = dis;
     }
 
-    /** Remove the editor from the page. */
+    /** Remove the editor from the page, and everything it put on the
+     *  document: a notebook makes and disposes of many editors, and each
+     *  listener left behind would keep its editor alive. */
     destroy() {
       this.closeDrawer();
+      this.closeHistory();
+      this.closeHelp();
+      if (this.fullscreen) this.setFullscreen(false);
       (this._docListeners || []).forEach(function (l) { document.removeEventListener(l[0], l[1]); });
       this._docListeners = [];
+      if (this._fsListener) {
+        document.removeEventListener("fullscreenchange", this._fsListener);
+        document.removeEventListener("webkitfullscreenchange", this._fsListener);
+        this._fsListener = null;
+      }
       if (this.root.parentNode) this.root.parentNode.removeChild(this.root);
     }
   }
@@ -5656,14 +5751,20 @@ var SympyEditor = (function () {
    *  SymPy natively (mobile/android, Chaquopy) - nothing to download, no
    *  WebAssembly, and the same Document code as everywhere else. */
   function nativeBackend(cfg) {
-    var pending = {}, seq = 0, docId = null, started = null;
-    window.__sympyEditorNative = function (req, ok, payload) {
-      var p = pending[req];
-      if (!p) return;
-      delete pending[req];
-      if (!ok) { p.reject(new Error(payload)); return; }
-      try { p.resolve(JSON.parse(payload)); } catch (e) { p.reject(e); }
-    };
+    // The host answers through one function on window, so the requests of
+    // every editor on the page share one table: a second editor defining
+    // the function again would have taken the first one's answers away.
+    var shared = window.__sympyEditorNativeShared || (window.__sympyEditorNativeShared = { pending: {}, seq: 0 });
+    var pending = shared.pending, docId = null, started = null;
+    if (!window.__sympyEditorNative) {
+      window.__sympyEditorNative = function (req, ok, payload) {
+        var p = pending[req];
+        if (!p) return;
+        delete pending[req];
+        if (!ok) { p.reject(new Error(payload)); return; }
+        try { p.resolve(JSON.parse(payload)); } catch (e) { p.reject(e); }
+      };
+    }
     function call(method, args) {
       return new Promise(function (resolve, reject) {
         var host = window.SympyEditorPy;
@@ -5671,7 +5772,7 @@ var SympyEditor = (function () {
           reject(new Error("This page needs the app's Python (window.SympyEditorPy)"));
           return;
         }
-        var req = "r" + (++seq);
+        var req = "r" + (++shared.seq);
         pending[req] = { resolve: resolve, reject: reject };
         try {
           host[method].apply(host, [req].concat(args));
@@ -5682,7 +5783,7 @@ var SympyEditor = (function () {
       });
     }
     function newDoc(srepr, state) {
-      docId = "doc" + (++seq);
+      docId = "doc" + (++shared.seq);
       return call("newDoc", [docId, srepr, JSON.stringify(Object.assign({}, cfg.document || {}, state || {}))]);
     }
     function start(report) {
