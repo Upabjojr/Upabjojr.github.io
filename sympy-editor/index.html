@@ -909,6 +909,9 @@ figure.shot { margin: 1.8rem 0 0; padding: 0.8rem 0.8rem 0.6rem; background: #ff
 figure.shot img { display: block; width: 100%; height: auto; border-radius: 0.6rem;
                   border: 1px solid #e4e8ec; }
 figure.shot figcaption { padding: 0.7rem 0.4rem 0.2rem; color: #57606a; font-size: 0.9rem; }
+figure.shot.phones { display: flex; flex-wrap: wrap; gap: 1.1rem; justify-content: center; }
+figure.shot.phones img { width: min(16rem, 46%); border-radius: 1.1rem; }
+figure.shot.phones figcaption { flex-basis: 100%; text-align: center; }
 footer { margin-top: 4rem; padding-top: 1.4rem; border-top: 1px solid #d0d7de;
          color: #57606a; font-size: 0.9rem; }
 footer code { font-size: 0.85em; }
@@ -998,6 +1001,8 @@ steps = <span class="f">History</span>([
 <h2 class="shelf">In the notebook</h2>
 <figure class="shot"><img src="jupyter-widget.png" alt="" loading="lazy"><figcaption>The widget in JupyterLab: the formula is the interface — click a piece to select it, type over it, or apply any SymPy function; the kernel computes, and <code>w.expr</code> follows.</figcaption></figure>
 <figure class="shot"><img src="jupyter-plot.png" alt="" loading="lazy"><figcaption>Two widgets wired together in a notebook: every edit committed in the editor redraws the plot (<code>examples/plot_alongside.ipynb</code> in the repository).</figcaption></figure>
+<h2 class="shelf">On a phone</h2>
+<figure class="shot phones"><img src="android-editor.png" alt="The editor on Android: the Gaussian integral selected" loading="lazy"><img src="android-history.png" alt="A derivation's history on Android, each step's change in red and green" loading="lazy"><figcaption>The Android app: the same editor with CPython and SymPy packaged inside, so every edit — and every step of a history — is computed on the phone, offline.</figcaption></figure>
 <h2 class="shelf">Worked derivations</h2>
 <section class="card" id="quadratic-formula">
   <span class="steps">7 steps</span>
@@ -1063,7 +1068,8 @@ steps = <span class="f">History</span>([
 and a word about what turned each into the next (<code>examples/derivations/</code>
 in the repository). Press <b>Play</b> on any of them, or <b>Save</b> to keep it
 as a single file that works offline.
-<nav class="legal"><a href="https://github.com/Upabjojr/sympy-editor">GitHub</a> ·
+<nav class="legal">© 2026 <a href="https://github.com/Upabjojr">Francesco Bonazzi</a> ·
+<a href="https://github.com/Upabjojr/sympy-editor">GitHub</a> ·
 <a href="https://pypi.org/project/sympy-editor/">PyPI</a> ·
 <a href="license.html">License (BSD 3-Clause)</a> ·
 <a href="privacy.html">Privacy</a></nav></footer>
