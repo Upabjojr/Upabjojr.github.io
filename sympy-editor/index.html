@@ -1243,6 +1243,15 @@ header a.button code { font-size: 0.85em; }
 }
 .se-tour-stop:hover, .se-tour-stop:focus-visible { animation: none; background: hsl(243 95% 88%); border-color: hsl(243 90% 58%); outline: none; }
 .se-tour-stop[hidden] { display: none; }
+/* the way back in: a button of the page's own (opts.playButton) that plays
+ * the tour again, there while none plays - out of sight rather than out of
+ * the page, so that nothing moves as it comes and goes */
+.se-tour-play { visibility: hidden; cursor: pointer; font: inherit; font-size: 0.95em; font-weight: 600;
+  padding: 0.3rem 0.95rem; margin-left: 0.35rem; border-radius: 999px; border: 1.5px solid hsl(243 60% 62%);
+  background: hsl(243 60% 95%); color: #312e81; }
+.se-tour-play.ready { visibility: visible; }
+.se-tour-play:hover, .se-tour-play:focus-visible { background: hsl(243 95% 88%); border-color: hsl(243 90% 58%); outline: none; }
+.se-tour-running .se-tour-play { visibility: hidden; }
 @media (max-width: 640px) { .se-tour-caption { font-size: 1.1rem; } .se-tour-caption.large { font-size: 1.4rem; } }
 @media (prefers-reduced-motion: reduce) {
   .se-tour-arrow, .se-tour-ring, .se-tour-ring::after, .se-tour-ring.pressing, .se-tour-stop { animation: none; }
@@ -1255,7 +1264,8 @@ header a.button code { font-size: 0.85em; }
   <p>A short tour plays here: the editor at work, pressed and typed into for
   real. Stop it whenever you like, and the editor is yours — click any piece
   of the formula and change it in place. Python runs in your browser, and every
-  result is computed on your device.</p>
+  result is computed on your device.
+  <button type="button" class="se-tour-play" id="try-the-editor-play">▶ Play the tour</button></p>
   <div id="try-the-editor"></div>
 </section>
 <h2 class="shelf">Use it</h2>
@@ -7853,6 +7863,7 @@ var SympyEditor = (function () {
     if (cfg.addons) options.addons = cfg.addons;           // their front ends (loaded by the Editor)
     var backend = make(cfg);
     var editor = new Editor(host, backend, options);
+    editor.mountConfig = cfg;      // what a fresh one is mounted from (a tour played again)
     editor.setState(cfg.snapshot).then(function () {
       var warm = Promise.resolve();
       if (backend.warmup && editor.opts.preload !== false) {
@@ -8209,17 +8220,45 @@ if (!window.SympyEditorTutorial) {
     this.speed = +(this.opts.speed || this.script.speed || 1) || 1;
     this.errors = [];
     this.stopped = false;
+    this.over = false;        // play() has returned, stopped or to the end
     this.index = -1;
     this.overlay = new Overlay(editor);
+    this._listeners = [];
     var self = this;
     if (this.opts.stopButton) {
       this.overlay.stopBtn.hidden = false;
       this.overlay.stopBtn.addEventListener("click", function (ev) { ev.preventDefault(); ev.stopPropagation(); self.stop(); });
     }
+    if (this.opts.stopOnLeave) {
+      // A reader gone elsewhere is not watching: a link followed, or the
+      // page scrolled on past the editor, stops the tour - which would
+      // otherwise pull the page back up at its next press.  Only a
+      // person's click counts: the player's own presses are not trusted.
+      var onLink = function (ev) {
+        var t = ev.target;
+        if (ev.isTrusted && t && t.closest && t.closest("a[href]")) self.stop();
+      };
+      this._listen(document, "click", onLink, true);
+      this._listen(document, "auxclick", onLink, true);
+      this._listen(window, "scroll", function () { if (self.past()) self.stop(); }, { capture: true, passive: true });
+    }
     this.done = new Promise(function (resolve) { self._resolve = resolve; });
   }
 
   Player.prototype.seconds = function (s) { return (s || 0) * 1000 / this.speed; };
+
+  Player.prototype._listen = function (target, type, fn, how) {
+    target.addEventListener(type, fn, how);
+    this._listeners.push(function () { target.removeEventListener(type, fn, how); });
+  };
+  Player.prototype._unlisten = function () {
+    this._listeners.splice(0).forEach(function (off) { off(); });
+  };
+
+  /** Has the page been scrolled on past the editor - all of it above the window? */
+  Player.prototype.past = function () {
+    return this.editor.root.getBoundingClientRect().bottom <= 0;
+  };
 
   /** Until the editor has its first state, Python has started, and nothing
    *  is on its way: a step sent to a busy editor is dropped. */
@@ -8412,8 +8451,10 @@ if (!window.SympyEditorTutorial) {
     if (!ov.caption.hidden) {
       var left = ov.until ? ov.until - Date.now() : this.seconds(LAST);
       await sleep(left);
+      if (this.stopped) return;         // stopped in the last caption: stop() saw to the rest, and nothing scrolls back
       ov.say(null);
       await sleep(300);
+      if (this.stopped) return;
     }
     ov.remove();
     var ed = this.editor;
@@ -8429,13 +8470,15 @@ if (!window.SympyEditorTutorial) {
   Player.prototype.play = async function () {
     document.documentElement.classList.add("se-tour-running");
     await this.ready();
+    if (this.opts.stopOnLeave && !this.stopped && this.past()) this.stop();   // the page opened further down
     do {
       var start = performance.now(), last = start;
       for (var i = 0; i < this.steps.length && !this.stopped; i++) {
         var step = this.steps[i] || {};
         var due = step.at !== undefined ? start + this.seconds(step.at)
                 : last + this.seconds(step.after !== undefined ? step.after : (i ? GAP : 0));
-        await sleep(due - performance.now());
+        // a little at a time: stopped, the player is over at once, not at the next step's time
+        while (!this.stopped && performance.now() < due) await sleep(Math.min(100, due - performance.now()));
         await this.idle();
         if (this.stopped) break;
         this.index = i;
@@ -8446,17 +8489,23 @@ if (!window.SympyEditorTutorial) {
       if (this.script.loop && !this.stopped) await sleep(this.seconds(this.script.loopDelay !== undefined ? this.script.loopDelay : 3));
     } while (this.script.loop && !this.stopped);
     if (!this.stopped) await this.finish();
-    document.documentElement.classList.remove("se-tour-running");
-    window.dispatchEvent(new CustomEvent("sympy-editor-tutorial-end", { detail: { errors: this.errors.slice() } }));
+    this.over = true;
+    this._unlisten();
+    // Stopped, stop() took the class away already - and a tour played again
+    // since then has put it back, for itself.
+    if (!this.stopped) document.documentElement.classList.remove("se-tour-running");
+    window.dispatchEvent(new CustomEvent("sympy-editor-tutorial-end", { detail: { errors: this.errors.slice(), stopped: this.stopped } }));
     this._resolve({ errors: this.errors.slice(), stopped: this.stopped });
   };
 
-  /** Stop where it is (the Stop button, or a page's own call): the overlay
-   *  goes, and the editor is left usable - the History, the drawer and a
-   *  field half typed in the formula shut, what was done so far kept. */
+  /** Stop where it is (the Stop button, the reader gone elsewhere, or a
+   *  page's own call): the overlay goes, and the editor is left usable - the
+   *  History, the drawer and a field half typed in the formula shut, what
+   *  was done so far kept. */
   Player.prototype.stop = function () {
     if (this.stopped) return;
     this.stopped = true;
+    this._unlisten();
     this.overlay.remove();
     var ed = this.editor;
     if (ed.root.querySelector(".se-history-view") && typeof ed.closeHistory === "function") ed.closeHistory();
@@ -8467,19 +8516,47 @@ if (!window.SympyEditorTutorial) {
     document.documentElement.classList.remove("se-tour-running");
   };
 
+  /** A fresh editor in the place of `ed`, mounted as it was: a tour played
+   *  again starts from where the first did - its formula, its add-ons off,
+   *  what they kept gone.  The page's Python is started already, and the new
+   *  editor's document is one more in it.  `ed` itself where there is no
+   *  mounting it again (an Editor made by hand). */
+  function fresh(ed) {
+    var cfg = ed.mountConfig, host = ed.root.parentNode;
+    if (!cfg || !host || !window.SympyEditor) return ed;
+    ed.destroy();
+    return window.SympyEditor.mount(host, cfg);
+  }
+
   window.SympyEditorTutorial = {
-    version: 2,
+    version: 3,
     Player: Player,
     /** Play `script` on an editor (the Editor, its element, or the element
      *  it was mounted in; the page's first editor by default).  `opts`:
      *  fullPage (the page is the editor's: back to its top at the end),
-     *  stopButton (a button to stop it), speed. */
+     *  stopButton (a button to stop it), stopOnLeave (a link followed, or
+     *  the page scrolled past the editor, stops it too), playButton (a
+     *  button of the page's own, or its id, that plays it again from the
+     *  start on a fresh editor - the class "se-tour-play" keeps it out of
+     *  sight while a tour plays), speed. */
     run: function (target, script, opts) {
       var ed = editorOf(target);
       if (!ed) throw new Error("SympyEditorTutorial.run: no editor to play on");
       var player = new Player(ed, script, opts);
       window.SympyEditorTutorial.current = player;
       player.play();
+      var btn = opts && opts.playButton;
+      if (typeof btn === "string") btn = document.getElementById(btn);
+      if (btn && !btn.__sympyEditorTour) {
+        btn.__sympyEditorTour = true;
+        btn.classList.add("ready");
+        btn.addEventListener("click", function () {
+          var now = window.SympyEditorTutorial.current;
+          if (now && !now.stopped && !now.over) return;          // one tour at a time
+          btn.blur();                                            // out of sight while it plays
+          window.SympyEditorTutorial.run(fresh(now ? now.editor : ed), script, opts);
+        });
+      }
       return player;
     }
   };
@@ -8488,7 +8565,7 @@ if (!window.SympyEditorTutorial) {
 }
 </script>
 <script>
-SympyEditorTutorial.run(document.getElementById("try-the-editor"), {"title": "SymPy Editor", "description": "A tour of the editor: editing in the formula itself, Transform (expand, factor, doit), the solver, undo, the History of the edits, and three add-ons - plot, rewrite rules, LaTeX.", "expression": "(x + 1)**3*(x - 2)", "addons": ["plot", "tree", "matching", "latex"], "steps": [{"at": 0, "caption": "SymPy Editor: a SymPy expression you edit right in the formula.", "size": "large", "position": "center", "duration": 3.6}, {"after": 3.9, "click": {"path": "/0/1"}, "say": "Click any piece of the formula to select it - here, the exponent."}, {"after": 1.8, "click": ".se-actions [data-cmd=\"edit\"]", "say": "Edit - or a double-click - opens it right there, in the formula..."}, {"after": 1.2, "type": {"target": "focused", "text": "4", "enter": true}, "say": "...type the new value, and Enter."}, {"after": 2.2, "click": {"path": "/1"}, "say": "Any piece at all: this factor..."}, {"after": 1.2, "click": ".se-actions [data-cmd=\"edit\"]", "lead": 0.8}, {"after": 0.8, "type": {"target": "focused", "text": "x - 3", "enter": true}, "say": "...becomes x - 3."}, {"after": 2.2, "click": ".se-toolbar [data-cmd=\"parent\"]", "say": "The up arrow selects what holds it: the whole product."}, {"after": 2.0, "click": ".se-ops", "say": "Transform lists what can be done with it."}, {"after": 0.9, "click": ".se-pick-menu[data-for=\"se-ops\"] .se-pick-item[data-name=\"expand\"]", "say": "Expand multiplies it out - a quintic."}, {"after": 2.8, "click": ".se-ops", "say": "Factor finds the factors again..."}, {"after": 0.9, "click": ".se-pick-menu[data-for=\"se-ops\"] .se-pick-item[data-name=\"factor\"]", "say": "...x + 1 four times, and x - 3."}, {"after": 2.8, "click": {"path": "/"}, "say": "Select the whole formula and write over it: an integral."}, {"after": 1.0, "click": ".se-actions [data-cmd=\"edit\"]", "lead": 0.8}, {"after": 0.8, "type": {"target": "focused", "text": "Integral(1/(x**3 + 1), x)", "enter": true}}, {"after": 2.0, "click": ".se-ops", "say": "doit evaluates it..."}, {"after": 0.9, "click": ".se-pick-menu[data-for=\"se-ops\"] .se-pick-item[data-name=\"doit\"]", "say": "...two logarithms and an arctangent."}, {"after": 3.2, "click": ".se-toolbar [data-cmd=\"undo\"]", "say": "Undo takes a step back; redo brings it again."}, {"after": 1.4, "click": ".se-toolbar [data-cmd=\"redo\"]"}, {"after": 2.4, "click": {"path": "/"}, "say": "An equation now: the general quadratic."}, {"after": 1.0, "click": ".se-actions [data-cmd=\"edit\"]", "lead": 0.8}, {"after": 0.8, "type": {"target": "focused", "text": "Eq(a*x**2 + b*x + c, 0)", "enter": true}}, {"after": 2.0, "type": {"target": ".se-fn", "text": "solve", "enter": true}, "say": "Any SymPy function applies to it from this box: solve..."}, {"after": 1.4, "choose": {"target": ".se-fn-form select", "value": "x"}, "say": "...for x..."}, {"after": 0.9, "click": ".se-fn-form .se-fn-apply", "say": "...and there is the quadratic formula."}, {"after": 2.2, "click": {"path": "/"}, "say": "Add-ons bring more. A formula to plot..."}, {"after": 1.0, "click": ".se-actions [data-cmd=\"edit\"]", "lead": 0.8}, {"after": 0.8, "type": {"target": "focused", "text": "exp(-x**2/y)*cos(z*x)", "enter": true}}, {"after": 1.8, "click": ".se-toolbar [data-cmd=\"drawer\"]", "say": "...and the menu that holds the add-ons.", "sayFor": 2.0}, {"after": 1.0, "click": {"selector": ".se-drawer-addons label.se-addon-row", "text": "Plot"}, "lead": 0.8, "say": "Switch them on: a plot..."}, {"after": 0.6, "click": {"selector": ".se-drawer-addons label.se-addon-row", "text": "Rewrite rules"}, "lead": 0.6, "say": "...rewrite rules..."}, {"after": 0.6, "click": {"selector": ".se-drawer-addons label.se-addon-row", "text": "LaTeX"}, "lead": 0.6, "say": "...and a LaTeX reader."}, {"after": 1.6, "click": ".se-drawer-close", "lead": 0.6}, {"after": 1.4, "point": ".se-addon-plot .plot-sliders", "hold": 2.2, "say": "The plot wants a value for every other symbol: y and z."}, {"after": 0.4, "type": {"target": ".se-addon-plot .plot-sliders label[data-sym=\"y\"] input.plot-value", "text": "4"}, "say": "y = 4..."}, {"after": 0.8, "type": {"target": ".se-addon-plot .plot-sliders label[data-sym=\"z\"] input.plot-value", "text": "3"}, "say": "...z = 3, and it draws."}, {"after": 1.4, "point": ".se-addon-plot .plot-area", "hold": 2.2, "say": "A damped wave."}, {"after": 0.6, "type": {"target": ".se-addon-plot .plot-sliders label[data-sym=\"z\"] input.plot-value", "text": "8"}, "say": "Change z and it redraws: a faster wave."}, {"after": 2.2, "type": {"target": ".se-addon-plot .plot-bar label:nth-of-type(2) input", "text": "-3"}, "say": "The range, from -3..."}, {"after": 0.8, "type": {"target": ".se-addon-plot .plot-bar label:nth-of-type(3) input", "text": "3"}, "say": "...to 3: a closer look."}, {"after": 2.4, "click": {"path": "/0"}, "say": "It plots the selection: now the cosine alone."}, {"after": 3.0, "click": {"path": "/"}, "say": "The whole formula again."}, {"after": 2.4, "type": {"target": ".ltx-input", "text": "\\sum_{n=1}^{\\infty} \\frac{1}{n^{2}}", "perChar": 0.04}, "say": "The LaTeX reader: type or paste LaTeX..."}, {"after": 1.2, "click": ".ltx-read", "say": "...read it..."}, {"after": 1.4, "click": ".ltx-insert-all", "say": "...and it becomes the formula."}, {"after": 2.0, "click": ".se-ops", "say": "doit sums it..."}, {"after": 0.9, "click": ".se-pick-menu[data-for=\"se-ops\"] .se-pick-item[data-name=\"doit\"]", "say": "...the Basel problem: pi squared over six."}, {"after": 3.2, "click": {"path": "/"}, "say": "Rewrite rules, with wildcards: a_ matches anything."}, {"after": 1.0, "click": ".se-actions [data-cmd=\"edit\"]", "lead": 0.8}, {"after": 0.8, "type": {"target": "focused", "text": "sin(x)**2 + sin(2*x)**2", "enter": true}}, {"after": 1.8, "type": {"target": ".se-addon-matching input.mt-field", "text": "sin(a_)**2 -> 1 - cos(a_)**2"}, "say": "A rule: sin(a)^2 is 1 - cos(a)^2..."}, {"after": 0.8, "click": {"selector": ".se-addon-matching button", "text": "Add rule"}}, {"after": 1.2, "click": {"path": "/"}}, {"after": 0.8, "click": {"selector": ".se-addon-matching button", "text": "Rewrite"}, "say": "...applied wherever it matches."}, {"after": 3.4, "caption": "That is SymPy Editor.\n`pip install sympy-editor`", "size": "large", "position": "center", "duration": 4.5}]}, {"fullPage": false, "stopButton": true});
+SympyEditorTutorial.run(document.getElementById("try-the-editor"), {"title": "SymPy Editor", "description": "A tour of the editor: editing in the formula itself, Transform (expand, factor, doit), the solver, undo, the History of the edits, and three add-ons - plot, rewrite rules, LaTeX.", "expression": "(x + 1)**3*(x - 2)", "addons": ["plot", "tree", "matching", "latex"], "steps": [{"at": 0, "caption": "SymPy Editor: a SymPy expression you edit right in the formula.", "size": "large", "position": "center", "duration": 3.6}, {"after": 3.9, "click": {"path": "/0/1"}, "say": "Click any piece of the formula to select it - here, the exponent."}, {"after": 1.8, "click": ".se-actions [data-cmd=\"edit\"]", "say": "Edit - or a double-click - opens it right there, in the formula..."}, {"after": 1.2, "type": {"target": "focused", "text": "4", "enter": true}, "say": "...type the new value, and Enter."}, {"after": 2.2, "click": {"path": "/1"}, "say": "Any piece at all: this factor..."}, {"after": 1.2, "click": ".se-actions [data-cmd=\"edit\"]", "lead": 0.8}, {"after": 0.8, "type": {"target": "focused", "text": "x - 3", "enter": true}, "say": "...becomes x - 3."}, {"after": 2.2, "click": ".se-toolbar [data-cmd=\"parent\"]", "say": "The up arrow selects what holds it: the whole product."}, {"after": 2.0, "click": ".se-ops", "say": "Transform lists what can be done with it."}, {"after": 0.9, "click": ".se-pick-menu[data-for=\"se-ops\"] .se-pick-item[data-name=\"expand\"]", "say": "Expand multiplies it out - a quintic."}, {"after": 2.8, "click": ".se-ops", "say": "Factor finds the factors again..."}, {"after": 0.9, "click": ".se-pick-menu[data-for=\"se-ops\"] .se-pick-item[data-name=\"factor\"]", "say": "...x + 1 four times, and x - 3."}, {"after": 2.8, "click": {"path": "/"}, "say": "Select the whole formula and write over it: an integral."}, {"after": 1.0, "click": ".se-actions [data-cmd=\"edit\"]", "lead": 0.8}, {"after": 0.8, "type": {"target": "focused", "text": "Integral(1/(x**3 + 1), x)", "enter": true}}, {"after": 2.0, "click": ".se-ops", "say": "doit evaluates it..."}, {"after": 0.9, "click": ".se-pick-menu[data-for=\"se-ops\"] .se-pick-item[data-name=\"doit\"]", "say": "...two logarithms and an arctangent."}, {"after": 3.2, "click": ".se-toolbar [data-cmd=\"undo\"]", "say": "Undo takes a step back; redo brings it again."}, {"after": 1.4, "click": ".se-toolbar [data-cmd=\"redo\"]"}, {"after": 2.4, "click": {"path": "/"}, "say": "An equation now: the general quadratic."}, {"after": 1.0, "click": ".se-actions [data-cmd=\"edit\"]", "lead": 0.8}, {"after": 0.8, "type": {"target": "focused", "text": "Eq(a*x**2 + b*x + c, 0)", "enter": true}}, {"after": 2.0, "type": {"target": ".se-fn", "text": "solve", "enter": true}, "say": "Any SymPy function applies to it from this box: solve..."}, {"after": 1.4, "choose": {"target": ".se-fn-form select", "value": "x"}, "say": "...for x..."}, {"after": 0.9, "click": ".se-fn-form .se-fn-apply", "say": "...and there is the quadratic formula."}, {"after": 2.2, "click": {"path": "/"}, "say": "Add-ons bring more. A formula to plot..."}, {"after": 1.0, "click": ".se-actions [data-cmd=\"edit\"]", "lead": 0.8}, {"after": 0.8, "type": {"target": "focused", "text": "exp(-x**2/y)*cos(z*x)", "enter": true}}, {"after": 1.8, "click": ".se-toolbar [data-cmd=\"drawer\"]", "say": "...and the menu that holds the add-ons.", "sayFor": 2.0}, {"after": 1.0, "click": {"selector": ".se-drawer-addons label.se-addon-row", "text": "Plot"}, "lead": 0.8, "say": "Switch them on: a plot..."}, {"after": 0.6, "click": {"selector": ".se-drawer-addons label.se-addon-row", "text": "Rewrite rules"}, "lead": 0.6, "say": "...rewrite rules..."}, {"after": 0.6, "click": {"selector": ".se-drawer-addons label.se-addon-row", "text": "LaTeX"}, "lead": 0.6, "say": "...and a LaTeX reader."}, {"after": 1.6, "click": ".se-drawer-close", "lead": 0.6}, {"after": 1.4, "point": ".se-addon-plot .plot-sliders", "hold": 2.2, "say": "The plot wants a value for every other symbol: y and z."}, {"after": 0.4, "type": {"target": ".se-addon-plot .plot-sliders label[data-sym=\"y\"] input.plot-value", "text": "4"}, "say": "y = 4..."}, {"after": 0.8, "type": {"target": ".se-addon-plot .plot-sliders label[data-sym=\"z\"] input.plot-value", "text": "3"}, "say": "...z = 3, and it draws."}, {"after": 1.4, "point": ".se-addon-plot .plot-area", "hold": 2.2, "say": "A damped wave."}, {"after": 0.6, "type": {"target": ".se-addon-plot .plot-sliders label[data-sym=\"z\"] input.plot-value", "text": "8"}, "say": "Change z and it redraws: a faster wave."}, {"after": 2.2, "type": {"target": ".se-addon-plot .plot-bar label:nth-of-type(2) input", "text": "-3"}, "say": "The range, from -3..."}, {"after": 0.8, "type": {"target": ".se-addon-plot .plot-bar label:nth-of-type(3) input", "text": "3"}, "say": "...to 3: a closer look."}, {"after": 2.4, "click": {"path": "/0"}, "say": "It plots the selection: now the cosine alone."}, {"after": 3.0, "click": {"path": "/"}, "say": "The whole formula again."}, {"after": 2.4, "type": {"target": ".ltx-input", "text": "\\sum_{n=1}^{\\infty} \\frac{1}{n^{2}}", "perChar": 0.04}, "say": "The LaTeX reader: type or paste LaTeX..."}, {"after": 1.2, "click": ".ltx-read", "say": "...read it..."}, {"after": 1.4, "click": ".ltx-insert-all", "say": "...and it becomes the formula."}, {"after": 2.0, "click": ".se-ops", "say": "doit sums it..."}, {"after": 0.9, "click": ".se-pick-menu[data-for=\"se-ops\"] .se-pick-item[data-name=\"doit\"]", "say": "...the Basel problem: pi squared over six."}, {"after": 3.2, "click": {"path": "/"}, "say": "Rewrite rules, with wildcards: a_ matches anything."}, {"after": 1.0, "click": ".se-actions [data-cmd=\"edit\"]", "lead": 0.8}, {"after": 0.8, "type": {"target": "focused", "text": "sin(x)**2 + sin(2*x)**2", "enter": true}}, {"after": 1.8, "type": {"target": ".se-addon-matching input.mt-field", "text": "sin(a_)**2 -> 1 - cos(a_)**2"}, "say": "A rule: sin(a)^2 is 1 - cos(a)^2..."}, {"after": 0.8, "click": {"selector": ".se-addon-matching button", "text": "Add rule"}}, {"after": 1.2, "click": {"path": "/"}}, {"after": 0.8, "click": {"selector": ".se-addon-matching button", "text": "Rewrite"}, "say": "...applied wherever it matches."}, {"after": 3.4, "caption": "That is SymPy Editor.\n`pip install sympy-editor`", "size": "large", "position": "center", "duration": 4.5}]}, {"fullPage": false, "stopButton": true, "stopOnLeave": true, "playButton": "try-the-editor-play"});
 </script>
 </body>
 </html>
